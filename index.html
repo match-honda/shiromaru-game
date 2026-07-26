@@ -71,6 +71,9 @@ canvas{display:block;width:100%;height:100%}
 }
 .moveGroup{display:flex;gap:10px}
 .controlBtn{
+  touch-action:none;
+  -webkit-user-select:none;
+  user-select:none;
   border:2px solid rgba(255,255,255,.92);
   background:rgba(255,255,255,.44);
   color:white;
@@ -601,36 +604,48 @@ canvas{display:block;width:100%;height:100%}
 
   // スマホでは touchstart と pointerdown が二重発火するため、
   // 操作イベントを Pointer Events に一本化。
-  function bindHold(btn,key){
-    btn.addEventListener('pointerdown',e=>{
+  function setMoveKey(key,pressed,btn){
+    if(performance.now()<inputResetUntil && pressed)return;
+    keys[key]=pressed;
+    activeControlPointers[key]=pressed?'touch':null;
+    btn.classList.toggle('active',pressed);
+  }
+
+  function bindMoveButton(btn,key){
+    // iPhoneではtouchイベントを優先し、ジャンプと左右移動を別々に保持する
+    btn.addEventListener('touchstart',e=>{
       e.preventDefault();
-      if(performance.now()<inputResetUntil)return;
-      activeControlPointers[key]=e.pointerId;
-      keys[key]=true;
-      btn.classList.add('active');
-      if(btn.setPointerCapture){
-        try{btn.setPointerCapture(e.pointerId)}catch(_){}
-      }
+      setMoveKey(key,true,btn);
     },{passive:false});
 
-    const release=e=>{
+    btn.addEventListener('touchend',e=>{
       e.preventDefault();
-      if(activeControlPointers[key]===e.pointerId || e.type==='lostpointercapture'){
-        activeControlPointers[key]=null;
-        keys[key]=false;
-        btn.classList.remove('active');
-      }
-    };
-    ['pointerup','pointercancel','lostpointercapture'].forEach(type=>{
-      btn.addEventListener(type,release,{passive:false});
+      setMoveKey(key,false,btn);
+    },{passive:false});
+
+    btn.addEventListener('touchcancel',e=>{
+      e.preventDefault();
+      setMoveKey(key,false,btn);
+    },{passive:false});
+
+    // PC確認用
+    btn.addEventListener('mousedown',e=>{
+      e.preventDefault();
+      setMoveKey(key,true,btn);
+    });
+    btn.addEventListener('mouseup',e=>{
+      e.preventDefault();
+      setMoveKey(key,false,btn);
+    });
+    btn.addEventListener('mouseleave',()=>{
+      setMoveKey(key,false,btn);
     });
   }
 
-  bindHold(leftBtn,'left');
-  bindHold(rightBtn,'right');
+  bindMoveButton(leftBtn,'left');
+  bindMoveButton(rightBtn,'right');
 
-  // pointerup は各ボタンが自分の指だけを解除する。
-  // ジャンプの指を離した時に、左右移動まで止めない。
+  // 画面が非表示になった時だけ、すべての移動入力を解除する
   ['blur','pagehide'].forEach(type=>{
     window.addEventListener(type,()=>{
       activeControlPointers.left=null;
@@ -653,13 +668,16 @@ canvas{display:block;width:100%;height:100%}
     }
   });
 
-  jumpBtn.addEventListener('pointerdown',e=>{
+  function pressJump(e){
     e.preventDefault();
     if(performance.now()<inputResetUntil)return;
     jumpBtn.classList.add('active');
     jump();
     setTimeout(()=>jumpBtn.classList.remove('active'),90);
-  },{passive:false});
+  }
+
+  jumpBtn.addEventListener('touchstart',pressJump,{passive:false});
+  jumpBtn.addEventListener('mousedown',pressJump);
 
   addEventListener('keydown',e=>{
     if(e.code==='ArrowLeft'){keyboardLeft=true;keys.left=true}
@@ -681,10 +699,10 @@ canvas{display:block;width:100%;height:100%}
     }
   });
 
-  if(!startBtn||!leftBtn||!rightBtn||!jumpBtn){
-    throw new Error('操作ボタンの読み込みに失敗しました');
-  }
-  startBtn.addEventListener('click',startGame);
+  startBtn.addEventListener('click',()=>{
+    console.log('ゲーム開始：タッチ入力モード');
+    startGame();
+  });
   homeBtn.addEventListener('click',()=>{
     closeStory();
     showTop('トップページに戻りました。もう一度、最初から挑戦できます。');
