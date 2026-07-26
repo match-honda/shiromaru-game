@@ -359,6 +359,7 @@ canvas{display:block;width:100%;height:100%}
   let platforms=[],items=[],enemies=[],particles=[];
   let finishX=1800;
   let last=0;
+  let stageClearLocked=false;
 
   const stages=[
     {name:'砂浜', sky1:'#8edcff',sky2:'#e9fbff',sea:'#48aee0',sand:'#efd49c',finish:1800},
@@ -394,6 +395,7 @@ canvas{display:block;width:100%;height:100%}
   function groundY(){return H-150}
 
   function resetStage(full=false){
+    stageClearLocked=false;
     if(full){score=0;lives=3;stage=1}
     worldX=0;
     player.x=90;player.y=groundY()-player.h;player.vx=0;player.vy=0;player.jumps=0;player.inv=0;
@@ -462,6 +464,8 @@ canvas{display:block;width:100%;height:100%}
   }
 
   function startGame(){
+    closeStory();
+    stageClearLocked=false;
     if(dead){
       dead=false;
       resetStage(true);
@@ -489,32 +493,42 @@ canvas{display:block;width:100%;height:100%}
 
   function showStory(clearedStage){
     const story=stories[clearedStage-1];
+    if(!story)return;
+
     storyTitle.textContent=story.title;
     storyText.textContent=story.text;
     storyScene.className='storyScene '+(clearedStage===5?'storyReunion':'storyHiddenDad');
     storyNextBtn.textContent=clearedStage===5?'トップページへ':'つぎのステージへ';
+
+    // クラスだけでなく表示状態も直接指定し、端末差による非表示を防止
     storyOverlay.classList.add('show');
+    storyOverlay.style.display='flex';
+    storyOverlay.style.zIndex='20';
   }
 
   function closeStory(){
     storyOverlay.classList.remove('show');
+    storyOverlay.style.display='none';
   }
 
   function clearStage(){
+    if(stageClearLocked)return;
+    stageClearLocked=true;
     running=false;
+
     const clearedStage=stage;
     toast.textContent='ステージクリア！';
     toast.classList.add('show');
-    setTimeout(()=>{
-      toast.classList.remove('show');
-      showStory(clearedStage);
-    },650);
+
+    // 紙芝居を先に確実に表示し、トーストだけ少し遅れて消す
+    showStory(clearedStage);
+    setTimeout(()=>toast.classList.remove('show'),650);
   }
 
   function jump(){
     if(!running)return;
     if(player.jumps<2){
-      player.vy=player.jumps===0?-18.5:-15.5;
+      player.vy=player.jumps===0?-16.2:-13.8;
       player.jumps++;
       burst(player.x+player.w*.35,player.y+player.h,'#ffffff');
     }
@@ -574,6 +588,7 @@ canvas{display:block;width:100%;height:100%}
     if(clearedStage<stages.length){
       stage++;
       resetStage(false);
+      stageClearLocked=false;
       running=true;
       last=performance.now();
       requestAnimationFrame(loop);
@@ -683,7 +698,7 @@ canvas{display:block;width:100%;height:100%}
       if(stomped){
         e.dead=true;
         player.y=r.y-player.h;
-        player.vy=-12.5;
+        player.vy=-10.8;
         player.jumps=1;
         burst(r.x+r.w/2,r.y+8,e.type==='gull'?'#ffffff':'#ffb06d');
         toast.textContent=
