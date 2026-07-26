@@ -357,15 +357,16 @@ canvas{display:block;width:100%;height:100%}
   const storyNextBtn = document.getElementById('storyNextBtn');
   const autoBadge = document.getElementById('autoBadge');
   const stageNotice = document.getElementById('stageNotice');
-  const controlButtons = [leftBtn,rightBtn,jumpBtn];
-  const activeControlPointers={left:null,right:null};
-  let keyboardLeft=false;
-  let keyboardRight=false;
-  let inputResetUntil=0;
 
   const leftBtn = document.getElementById('leftBtn');
   const rightBtn = document.getElementById('rightBtn');
   const jumpBtn = document.getElementById('jumpBtn');
+  const controlButtons = [leftBtn,rightBtn,jumpBtn];
+
+  const activeControlPointers={left:null,right:null};
+  let keyboardLeft=false;
+  let keyboardRight=false;
+  let inputResetUntil=0;
 
   let W=390,H=760,dpr=1;
   function resize(){
@@ -674,6 +675,9 @@ canvas{display:block;width:100%;height:100%}
     }
   });
 
+  if(!startBtn||!leftBtn||!rightBtn||!jumpBtn){
+    throw new Error('操作ボタンの読み込みに失敗しました');
+  }
   startBtn.addEventListener('click',startGame);
   homeBtn.addEventListener('click',()=>{
     closeStory();
