@@ -125,6 +125,9 @@ canvas{display:block;width:100%;height:100%}
 .logoSeal .nose{position:absolute;top:46px;left:50%;width:8px;height:7px;background:#333;border-radius:50%;transform:translateX(-50%)}
 .panel h1{font-size:23px;margin:6px 0}
 .panel p{font-size:14px;line-height:1.7;margin:8px 0;color:#53636c}
+.rules{margin:14px 0 4px;display:grid;gap:8px;text-align:left}
+.rule{display:flex;align-items:center;gap:10px;background:#f2f8fc;border-radius:13px;padding:10px 12px;font-size:13px;font-weight:800;line-height:1.45}
+.ruleIcon{width:34px;height:34px;flex:0 0 34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;font-size:20px;box-shadow:0 2px 8px rgba(30,82,108,.12)}
 .primary{
   margin-top:14px;
   width:100%;
@@ -186,7 +189,12 @@ canvas{display:block;width:100%;height:100%}
         <div class="nose"></div>
       </div>
       <h1 id="overlayTitle">しろまるの海辺アドベンチャー</h1>
-      <p id="overlayText">貝がらを集めながら、カニや岩をよけてゴールを目指そう。二段ジャンプもできます。</p>
+      <p id="overlayText">貝がらを集めながら、海辺のゴールを目指そう！</p>
+      <div id="introRules" class="rules">
+        <div class="rule"><span class="ruleIcon">⬆️</span><span>ジャンプボタンを空中でもう一度押すと、二段ジャンプ！</span></div>
+        <div class="rule"><span class="ruleIcon">🦀</span><span>カニは頭を上から踏むと、ダメージなしで倒せます。</span></div>
+        <div class="rule"><span class="ruleIcon">💥</span><span>カニの横や岩にぶつかると、ライフが1つ減ります。</span></div>
+      </div>
       <button id="startBtn" class="primary">ゲームスタート</button>
       <div class="small">スマホ縦画面対応｜左右移動＋ジャンプ</div>
     </div>
@@ -203,6 +211,7 @@ canvas{display:block;width:100%;height:100%}
   const overlay = document.getElementById('overlay');
   const overlayTitle = document.getElementById('overlayTitle');
   const overlayText = document.getElementById('overlayText');
+  const introRules = document.getElementById('introRules');
   const startBtn = document.getElementById('startBtn');
   const toast = document.getElementById('toast');
 
@@ -256,7 +265,7 @@ canvas{display:block;width:100%;height:100%}
     }
     enemies=[];
     for(let x=520;x<finishX-220;x+=330){
-      enemies.push({type:Math.random()<.55?'crab':'rock',x:x,y:0,w:48,h:36,dir:Math.random()<.5?-1:1});
+      enemies.push({type:Math.random()<.55?'crab':'rock',x:x,y:0,w:48,h:36,dir:Math.random()<.5?-1:1,dead:false});
     }
     particles=[];
     updateHud();
@@ -269,7 +278,14 @@ canvas{display:block;width:100%;height:100%}
   }
 
   function startGame(){
-    if(dead){dead=false;resetStage(true)}
+    if(dead){
+      dead=false;
+      resetStage(true);
+      overlayTitle.textContent='しろまるの海辺アドベンチャー';
+      overlayText.textContent='貝がらを集めながら、海辺のゴールを目指そう！';
+      startBtn.textContent='ゲームスタート';
+      introRules.style.display='grid';
+    }
     running=true;
     overlay.classList.add('hidden');
     last=performance.now();
@@ -279,6 +295,7 @@ canvas{display:block;width:100%;height:100%}
   function endGame(){
     running=false;dead=true;
     overlayTitle.textContent='ゲームオーバー';
+    introRules.style.display='none';
     overlayText.textContent=`貝がらを ${score} 個集めました。もう一度挑戦しよう！`;
     startBtn.textContent='もう一度あそぶ';
     overlay.classList.remove('hidden');
@@ -298,6 +315,7 @@ canvas{display:block;width:100%;height:100%}
         requestAnimationFrame(loop);
       }else{
         overlayTitle.textContent='全ステージクリア！';
+        introRules.style.display='none';
         overlayText.textContent=`おめでとう！ 貝がらを ${score} 個集めました。`;
         startBtn.textContent='最初からあそぶ';
         overlay.classList.remove('hidden');
@@ -361,6 +379,7 @@ canvas{display:block;width:100%;height:100%}
   function update(dt){
     const s=dt/16.67;
     const accel=0.55*s;
+    const previousY=player.y;
     if(keys.left)player.vx-=accel;
     if(keys.right)player.vx+=accel;
     player.vx*=Math.pow(.84,s);
@@ -402,10 +421,28 @@ canvas{display:block;width:100%;height:100%}
     }
 
     for(const e of enemies){
+      if(e.dead)continue;
       if(e.type==='crab')e.x+=e.dir*.65*s;
       e.y=groundY()-e.h;
       const r={x:e.x-worldX+3,y:e.y+3,w:e.w-6,h:e.h-3};
-      if(rectHit(player,r))hurt();
+      if(!rectHit(player,r))continue;
+
+      const previousBottom=previousY+player.h;
+      const currentBottom=player.y+player.h;
+      const stomped=e.type==='crab' && player.vy>0 && previousBottom<=r.y+11 && currentBottom>=r.y;
+
+      if(stomped){
+        e.dead=true;
+        player.y=r.y-player.h;
+        player.vy=-9.5;
+        player.jumps=1;
+        burst(r.x+r.w/2,r.y+8,'#ffb06d');
+        toast.textContent='カニを倒した！';
+        toast.classList.add('show');
+        setTimeout(()=>toast.classList.remove('show'),500);
+      }else{
+        hurt();
+      }
     }
 
     for(const p of particles){
@@ -503,6 +540,7 @@ canvas{display:block;width:100%;height:100%}
   }
 
   function drawEnemy(e){
+    if(e.dead)return;
     const x=e.x-worldX,y=e.y;
     if(x<-80||x>W+80)return;
     if(e.type==='rock'){
