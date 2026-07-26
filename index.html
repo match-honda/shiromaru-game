@@ -284,9 +284,15 @@ canvas{display:block;width:100%;height:100%}
     <div class="hudBox">🐚 <span id="score">0</span></div>
     <div id="stageBox" class="hudBox">STAGE 1</div>
     <div id="lifeBox" class="hudBox">❤️❤️❤️</div>
+    <div id="autoBadge" class="hudBox" style="display:none">AUTO ▶</div>
+    <div id="invBadge" class="hudBox" style="display:none">⭐ むてき <span id="invSeconds">5</span></div>
   </div>
 
   <div id="toast">ステージクリア！</div>
+  <div id="stageNotice">
+    このステージは自動横スクロールです
+    <small>左右ボタンで位置を調整しながら進もう！</small>
+  </div>
 
   <div id="controls">
     <div class="moveGroup">
@@ -454,8 +460,8 @@ canvas{display:block;width:100%;height:100%}
 
   function showStageNotice(){
     if(!(stage===4 && stages[stage-1].autoScroll===true))return;
-    stageNotice.classList.add('show');
-    setTimeout(()=>stageNotice.classList.remove('show'),2200);
+    if(stageNotice)stageNotice.classList.add('show');
+    setTimeout(()=>{if(stageNotice)stageNotice.classList.remove('show')},2200);
   }
 
   function resetStage(full=false){
@@ -492,8 +498,8 @@ canvas{display:block;width:100%;height:100%}
       });
     }
     particles=[];
-    autoBadge.style.display=(stage===4 && s.autoScroll===true)?'block':'none';
-    invBadge.style.display='none';
+    if(autoBadge)autoBadge.style.display=(stage===4 && s.autoScroll===true)?'block':'none';
+    if(invBadge)invBadge.style.display='none';
     updateHud();
   }
 
@@ -771,10 +777,10 @@ canvas{display:block;width:100%;height:100%}
     if(player.inv>0)player.inv-=s;
     if(player.starInv>0){
       player.starInv=Math.max(0,player.starInv-s);
-      invBadge.style.display='block';
-      invSeconds.textContent=Math.max(1,Math.ceil(player.starInv/60));
+      if(invBadge)invBadge.style.display='block';
+      if(invSeconds)invSeconds.textContent=Math.max(1,Math.ceil(player.starInv/60));
     }else{
-      invBadge.style.display='none';
+      if(invBadge)invBadge.style.display='none';
     }
 
     player.x=Math.max(20,player.x);
@@ -1064,12 +1070,26 @@ canvas{display:block;width:100%;height:100%}
     drawSeal();
   }
 
+  function showRuntimeError(error){
+    running=false;
+    console.error(error);
+    overlayTitle.textContent='ゲームの読み込みエラー';
+    overlayText.textContent='画面を再読み込みしてください。改善しない場合は、最新のindex.htmlへ差し替えてください。';
+    startBtn.textContent='もう一度読み込む';
+    overlay.classList.remove('hidden');
+    startBtn.onclick=()=>location.reload();
+  }
+
   function loop(t){
     if(!running)return;
-    const dt=Math.min(32,t-last||16.67);last=t;
-    update(dt);
-    draw();
-    if(running)requestAnimationFrame(loop);
+    try{
+      const dt=Math.min(32,t-last||16.67);last=t;
+      update(dt);
+      draw();
+      if(running)requestAnimationFrame(loop);
+    }catch(error){
+      showRuntimeError(error);
+    }
   }
 
   validateStageModes();
