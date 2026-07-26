@@ -358,6 +358,10 @@ canvas{display:block;width:100%;height:100%}
   const autoBadge = document.getElementById('autoBadge');
   const stageNotice = document.getElementById('stageNotice');
   const controlButtons = [leftBtn,rightBtn,jumpBtn];
+  const activeControlPointers={left:null,right:null};
+  let keyboardLeft=false;
+  let keyboardRight=false;
+  let inputResetUntil=0;
 
   const leftBtn = document.getElementById('leftBtn');
   const rightBtn = document.getElementById('rightBtn');
@@ -417,17 +421,32 @@ canvas{display:block;width:100%;height:100%}
   ];
 
 
+  function validateStageModes(){
+    const autoStages=stages
+      .map((s,i)=>s.autoScroll===true?i+1:null)
+      .filter(Boolean);
+    if(autoStages.length!==1 || autoStages[0]!==4){
+      stages.forEach((s,i)=>s.autoScroll=(i===3));
+      console.error('自動スクロール設定をステージ4のみに修正しました');
+    }
+  }
+
   function groundY(){return H-150}
 
   function clearControls(){
     keys.left=false;
     keys.right=false;
+    keyboardLeft=false;
+    keyboardRight=false;
+    activeControlPointers.left=null;
+    activeControlPointers.right=null;
     player.vx=0;
+    inputResetUntil=performance.now()+300;
     controlButtons.forEach(btn=>btn.classList.remove('active'));
   }
 
   function showStageNotice(){
-    if(!stages[stage-1].autoScroll)return;
+    if(!(stage===4 && stages[stage-1].autoScroll===true))return;
     stageNotice.classList.add('show');
     setTimeout(()=>stageNotice.classList.remove('show'),2200);
   }
@@ -466,7 +485,7 @@ canvas{display:block;width:100%;height:100%}
       });
     }
     particles=[];
-    autoBadge.style.display=s.autoScroll?'block':'none';
+    autoBadge.style.display=(stage===4 && s.autoScroll===true)?'block':'none';
     updateHud();
   }
 
@@ -578,30 +597,37 @@ canvas{display:block;width:100%;height:100%}
   // スマホでは touchstart と pointerdown が二重発火するため、
   // 操作イベントを Pointer Events に一本化。
   function bindHold(btn,key){
-    const on=e=>{
+    btn.addEventListener('pointerdown',e=>{
       e.preventDefault();
-      if(btn.setPointerCapture && e.pointerId!==undefined){
-        try{btn.setPointerCapture(e.pointerId)}catch(_){}
-      }
+      if(performance.now()<inputResetUntil)return;
+      activeControlPointers[key]=e.pointerId;
       keys[key]=true;
       btn.classList.add('active');
-    };
-    const off=e=>{
+      if(btn.setPointerCapture){
+        try{btn.setPointerCapture(e.pointerId)}catch(_){}
+      }
+    },{passive:false});
+
+    const release=e=>{
       e.preventDefault();
-      keys[key]=false;
-      btn.classList.remove('active');
+      if(activeControlPointers[key]===e.pointerId || e.type==='lostpointercapture'){
+        activeControlPointers[key]=null;
+        keys[key]=false;
+        btn.classList.remove('active');
+      }
     };
-    btn.addEventListener('pointerdown',on,{passive:false});
-    ['pointerup','pointercancel','lostpointercapture'].forEach(t=>
-      btn.addEventListener(t,off,{passive:false})
-    );
+    ['pointerup','pointercancel','lostpointercapture'].forEach(type=>{
+      btn.addEventListener(type,release,{passive:false});
+    });
   }
+
   bindHold(leftBtn,'left');
   bindHold(rightBtn,'right');
 
-  // 紙芝居や画面外で指を離しても入力が残らないようにする
-  ['pointerup','pointercancel','blur'].forEach(type=>{
+  ['pointerup','pointercancel','blur','pagehide'].forEach(type=>{
     window.addEventListener(type,()=>{
+      activeControlPointers.left=null;
+      activeControlPointers.right=null;
       keys.left=false;
       keys.right=false;
       leftBtn.classList.remove('active');
@@ -609,24 +635,45 @@ canvas{display:block;width:100%;height:100%}
     });
   });
 
-  // ジャンプボタンは毎回の pointerdown を1回のジャンプとして処理。
-  // 指を離す判定に依存しないため、スマホでも2回目のタップを確実に受付。
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){
+      activeControlPointers.left=null;
+      activeControlPointers.right=null;
+      keys.left=false;
+      keys.right=false;
+      leftBtn.classList.remove('active');
+      rightBtn.classList.remove('active');
+    }
+  });
+
   jumpBtn.addEventListener('pointerdown',e=>{
     e.preventDefault();
+    if(performance.now()<inputResetUntil)return;
     jumpBtn.classList.add('active');
     jump();
     setTimeout(()=>jumpBtn.classList.remove('active'),90);
   },{passive:false});
 
   addEventListener('keydown',e=>{
-    if(e.code==='ArrowLeft')keys.left=true;
-    if(e.code==='ArrowRight')keys.right=true;
-    if((e.code==='Space'||e.code==='ArrowUp')&&!e.repeat){e.preventDefault();jump()}
+    if(e.code==='ArrowLeft'){keyboardLeft=true;keys.left=true}
+    if(e.code==='ArrowRight'){keyboardRight=true;keys.right=true}
+    if((e.code==='Space'||e.code==='ArrowUp')&&!e.repeat){
+      e.preventDefault();
+      jump();
+    }
   });
+
   addEventListener('keyup',e=>{
-    if(e.code==='ArrowLeft')keys.left=false;
-    if(e.code==='ArrowRight')keys.right=false;
+    if(e.code==='ArrowLeft'){
+      keyboardLeft=false;
+      if(activeControlPointers.left===null)keys.left=false;
+    }
+    if(e.code==='ArrowRight'){
+      keyboardRight=false;
+      if(activeControlPointers.right===null)keys.right=false;
+    }
   });
+
   startBtn.addEventListener('click',startGame);
   homeBtn.addEventListener('click',()=>{
     closeStory();
@@ -676,6 +723,16 @@ canvas{display:block;width:100%;height:100%}
     const s=dt/16.67;
     const accel=0.55*s;
     const previousY=player.y;
+
+    if(performance.now()<inputResetUntil){
+      keys.left=false;
+      keys.right=false;
+      player.vx=0;
+    }else{
+      keys.left=keyboardLeft||activeControlPointers.left!==null;
+      keys.right=keyboardRight||activeControlPointers.right!==null;
+    }
+
     if(keys.left)player.vx-=accel;
     if(keys.right)player.vx+=accel;
     player.vx*=Math.pow(.84,s);
@@ -702,7 +759,8 @@ canvas{display:block;width:100%;height:100%}
     if(player.y>H+120){hurt();player.y=groundY()-player.h;player.vy=0}
 
     const currentStage=stages[stage-1];
-    if(currentStage.autoScroll){
+    const isAutoStage=(stage===4 && currentStage.autoScroll===true);
+    if(isAutoStage){
       // ステージ4限定。背景は自動で進むが、左右操作は有効。
       worldX+=1.45*s;
       player.x=Math.max(18,Math.min(W*.78,player.x));
@@ -963,6 +1021,7 @@ canvas{display:block;width:100%;height:100%}
     if(running)requestAnimationFrame(loop);
   }
 
+  validateStageModes();
   resetStage(true);
   updateRecords();
   draw();
