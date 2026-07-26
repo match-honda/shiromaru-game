@@ -322,6 +322,7 @@ canvas{display:block;width:100%;height:100%}
         <div class="rule"><span class="ruleIcon">⬆️</span><span>ジャンプボタンを空中でもう一度押すと、二段ジャンプ！</span></div>
         <div class="rule"><span class="ruleIcon">👾</span><span>カニなどの敵は、上から踏みつけるとダメージなしで倒せます。</span></div>
         <div class="rule"><span class="ruleIcon">🪨</span><span>敵の横や岩にぶつかると、ライフが1つ減ります。岩は倒せません。</span></div>
+        <div class="rule"><span class="ruleIcon">⭐</span><span>スターに触れると、5秒間むてきになります。敵や岩にぶつかってもライフが減りません。</span></div>
         <div class="rule"><span class="ruleIcon">🌟</span><span>ステージ4だけ自動横スクロール。左右ボタンで位置を調整できます。</span></div>
       </div>
       <div id="recordBox">
@@ -356,6 +357,8 @@ canvas{display:block;width:100%;height:100%}
   const storyText = document.getElementById('storyText');
   const storyNextBtn = document.getElementById('storyNextBtn');
   const autoBadge = document.getElementById('autoBadge');
+  const invBadge = document.getElementById('invBadge');
+  const invSeconds = document.getElementById('invSeconds');
   const stageNotice = document.getElementById('stageNotice');
 
   const leftBtn = document.getElementById('leftBtn');
@@ -381,7 +384,7 @@ canvas{display:block;width:100%;height:100%}
   resize();
 
   const keys={left:false,right:false,jump:false};
-  const player={x:90,y:0,w:64,h:48,vx:0,vy:0,jumps:0,inv:0};
+  const player={x:90,y:0,w:64,h:48,vx:0,vy:0,jumps:0,inv:0,starInv:0};
   let running=false,dead=false;
   let score=0,lives=3,stage=1,worldX=0;
   let lastScore=Number(localStorage.getItem('shiromaruLastScore')||0);
@@ -457,7 +460,7 @@ canvas{display:block;width:100%;height:100%}
     clearControls();
     if(full){score=0;lives=3;stage=1}
     worldX=0;
-    player.x=90;player.y=groundY()-player.h;player.vx=0;player.vy=0;player.jumps=0;player.inv=0;
+    player.x=90;player.y=groundY()-player.h;player.vx=0;player.vy=0;player.jumps=0;player.inv=0;player.starInv=0;
     const s=stages[stage-1];
     finishX=s.finish;
     platforms=[
@@ -473,13 +476,13 @@ canvas{display:block;width:100%;height:100%}
     enemies=[];
     for(let x=520;x<finishX-220;x+=330){
       const roll=Math.random();
-      const type=roll<.26?'crab':roll<.48?'gull':roll<.68?'jelly':roll<.86?'star':'rock';
+      const type=roll<.27?'crab':roll<.50?'gull':roll<.72?'jelly':roll<.88?'powerstar':'rock';
       enemies.push({
         type,
         x:x,
         y:0,
-        w:type==='gull'?52:type==='jelly'?46:type==='star'?44:48,
-        h:type==='gull'?34:type==='jelly'?44:type==='star'?40:36,
+        w:type==='gull'?52:type==='jelly'?46:type==='powerstar'?44:48,
+        h:type==='gull'?34:type==='jelly'?44:type==='powerstar'?40:36,
         dir:Math.random()<.5?-1:1,
         dead:false,
         phase:Math.random()*Math.PI*2
@@ -487,6 +490,7 @@ canvas{display:block;width:100%;height:100%}
     }
     particles=[];
     autoBadge.style.display=(stage===4 && s.autoScroll===true)?'block':'none';
+    invBadge.style.display='none';
     updateHud();
   }
 
@@ -625,7 +629,9 @@ canvas{display:block;width:100%;height:100%}
   bindHold(leftBtn,'left');
   bindHold(rightBtn,'right');
 
-  ['pointerup','pointercancel','blur','pagehide'].forEach(type=>{
+  // pointerup は各ボタンが自分の指だけを解除する。
+  // ジャンプの指を離した時に、左右移動まで止めない。
+  ['blur','pagehide'].forEach(type=>{
     window.addEventListener(type,()=>{
       activeControlPointers.left=null;
       activeControlPointers.right=null;
@@ -713,7 +719,7 @@ canvas{display:block;width:100%;height:100%}
   }
 
   function hurt(){
-    if(player.inv>0)return;
+    if(player.inv>0||player.starInv>0)return;
     lives--;
     player.inv=90;
     player.vy=-8;
@@ -745,6 +751,13 @@ canvas{display:block;width:100%;height:100%}
     player.x+=player.vx*s;
     player.y+=player.vy*s;
     if(player.inv>0)player.inv-=s;
+    if(player.starInv>0){
+      player.starInv=Math.max(0,player.starInv-s);
+      invBadge.style.display='block';
+      invSeconds.textContent=Math.max(1,Math.ceil(player.starInv/60));
+    }else{
+      invBadge.style.display='none';
+    }
 
     player.x=Math.max(20,player.x);
 
@@ -797,10 +810,9 @@ canvas{display:block;width:100%;height:100%}
         e.x+=e.dir*.45*s;
         e.phase+=.04*s;
         e.y=groundY()-125+Math.sin(e.phase)*28;
-      }else if(e.type==='star'){
-        e.x+=e.dir*.35*s;
-        e.phase+=.05*s;
-        e.y=groundY()-e.h+Math.sin(e.phase)*3;
+      }else if(e.type==='powerstar'){
+        e.phase+=.07*s;
+        e.y=groundY()-95+Math.sin(e.phase)*18;
       }else{
         e.y=groundY()-e.h;
       }
@@ -808,9 +820,19 @@ canvas{display:block;width:100%;height:100%}
       const r={x:e.x-worldX+3,y:e.y+3,w:e.w-6,h:e.h-3};
       if(!rectHit(player,r))continue;
 
+      if(e.type==='powerstar'){
+        e.dead=true;
+        player.starInv=300;
+        burst(r.x+r.w/2,r.y+r.h/2,'#ffe36e');
+        toast.textContent='スターをゲット！ 5秒間むてき！';
+        toast.classList.add('show');
+        setTimeout(()=>toast.classList.remove('show'),900);
+        continue;
+      }
+
       const previousBottom=previousY+player.h;
       const currentBottom=player.y+player.h;
-      const isDefeatable=e.type!=='rock';
+      const isDefeatable=e.type!=='rock'&&e.type!=='powerstar';
       const crossedEnemyTop=previousBottom<=r.y+12 && currentBottom>=r.y;
       const stomped=isDefeatable && player.vy>0 && crossedEnemyTop;
 
@@ -823,8 +845,7 @@ canvas{display:block;width:100%;height:100%}
         toast.textContent=
           e.type==='crab'?'カニを倒した！':
           e.type==='gull'?'カモメを倒した！':
-          e.type==='jelly'?'クラゲを倒した！':
-          e.type==='star'?'ヒトデを倒した！':'敵を踏みつけた！';
+          e.type==='jelly'?'クラゲを倒した！':'敵を踏みつけた！';
         toast.classList.add('show');
         setTimeout(()=>toast.classList.remove('show'),500);
       }else{
@@ -882,9 +903,13 @@ canvas{display:block;width:100%;height:100%}
   }
 
   function drawSeal(){
-    if(player.inv>0&&Math.floor(player.inv/6)%2===0)return;
+    if(player.inv>0&&player.starInv<=0&&Math.floor(player.inv/6)%2===0)return;
     const x=player.x,y=player.y;
     ctx.save();
+    if(player.starInv>0){
+      ctx.shadowColor='#ffe66d';
+      ctx.shadowBlur=20;
+    }
     ctx.translate(x+player.w/2,y+player.h/2);
     ctx.rotate(Math.max(-.16,Math.min(.16,player.vy/55)));
     ctx.translate(-player.w/2,-player.h/2);
@@ -966,9 +991,12 @@ canvas{display:block;width:100%;height:100%}
       return;
     }
 
-    if(e.type==='star'){
+    if(e.type==='powerstar'){
       ctx.save();ctx.translate(x+22,y+20);
-      ctx.fillStyle='#ffcf65';
+      ctx.rotate(e.phase*.35);
+      ctx.shadowColor='#fff2a0';
+      ctx.shadowBlur=15;
+      ctx.fillStyle='#ffdf4f';
       ctx.beginPath();
       for(let i=0;i<10;i++){
         const a=-Math.PI/2+i*Math.PI/5;
@@ -978,6 +1006,7 @@ canvas{display:block;width:100%;height:100%}
       }
       ctx.closePath();ctx.fill();
       ctx.fillStyle='#30343c';ctx.beginPath();ctx.arc(-5,-2,2,0,7);ctx.arc(5,-2,2,0,7);ctx.fill();
+      ctx.shadowBlur=0;
       ctx.restore();
       return;
     }
