@@ -1,2 +1,0 @@
-# shiromaru-game
-cute game
