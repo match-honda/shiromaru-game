@@ -192,8 +192,8 @@ canvas{display:block;width:100%;height:100%}
       <p id="overlayText">貝がらを集めながら、海辺のゴールを目指そう！</p>
       <div id="introRules" class="rules">
         <div class="rule"><span class="ruleIcon">⬆️</span><span>ジャンプボタンを空中でもう一度押すと、二段ジャンプ！</span></div>
-        <div class="rule"><span class="ruleIcon">🦀</span><span>カニは頭を上から踏むと、ダメージなしで倒せます。</span></div>
-        <div class="rule"><span class="ruleIcon">💥</span><span>カニの横や岩にぶつかると、ライフが1つ減ります。</span></div>
+        <div class="rule"><span class="ruleIcon">👾</span><span>カニなどの敵は、上から踏みつけるとダメージなしで倒せます。</span></div>
+        <div class="rule"><span class="ruleIcon">🪨</span><span>敵の横や岩にぶつかると、ライフが1つ減ります。岩は倒せません。</span></div>
       </div>
       <button id="startBtn" class="primary">ゲームスタート</button>
       <div class="small">スマホ縦画面対応｜左右移動＋ジャンプ</div>
@@ -265,7 +265,18 @@ canvas{display:block;width:100%;height:100%}
     }
     enemies=[];
     for(let x=520;x<finishX-220;x+=330){
-      enemies.push({type:Math.random()<.55?'crab':'rock',x:x,y:0,w:48,h:36,dir:Math.random()<.5?-1:1,dead:false});
+      const roll=Math.random();
+      const type=roll<.45?'crab':roll<.75?'gull':'rock';
+      enemies.push({
+        type,
+        x:x,
+        y:0,
+        w:type==='gull'?52:48,
+        h:type==='gull'?34:36,
+        dir:Math.random()<.5?-1:1,
+        dead:false,
+        phase:Math.random()*Math.PI*2
+      });
     }
     particles=[];
     updateHud();
@@ -333,21 +344,53 @@ canvas{display:block;width:100%;height:100%}
     }
   }
 
+  // スマホでは touchstart と pointerdown が二重発火するため、
+  // 操作イベントを Pointer Events に一本化。
   function bindHold(btn,key){
-    const on=e=>{e.preventDefault();keys[key]=true;btn.classList.add('active')};
-    const off=e=>{e.preventDefault();keys[key]=false;btn.classList.remove('active')};
-    ['pointerdown','touchstart'].forEach(t=>btn.addEventListener(t,on,{passive:false}));
-    ['pointerup','pointercancel','pointerleave','touchend','touchcancel'].forEach(t=>btn.addEventListener(t,off,{passive:false}));
+    const on=e=>{
+      e.preventDefault();
+      if(btn.setPointerCapture && e.pointerId!==undefined){
+        try{btn.setPointerCapture(e.pointerId)}catch(_){}
+      }
+      keys[key]=true;
+      btn.classList.add('active');
+    };
+    const off=e=>{
+      e.preventDefault();
+      keys[key]=false;
+      btn.classList.remove('active');
+    };
+    btn.addEventListener('pointerdown',on,{passive:false});
+    ['pointerup','pointercancel','lostpointercapture'].forEach(t=>
+      btn.addEventListener(t,off,{passive:false})
+    );
   }
   bindHold(leftBtn,'left');
   bindHold(rightBtn,'right');
-  ['pointerdown','touchstart'].forEach(t=>jumpBtn.addEventListener(t,e=>{e.preventDefault();jumpBtn.classList.add('active');jump()},{passive:false}));
-  ['pointerup','pointercancel','pointerleave','touchend','touchcancel'].forEach(t=>jumpBtn.addEventListener(t,e=>{e.preventDefault();jumpBtn.classList.remove('active')},{passive:false}));
+
+  let jumpPointerActive=false;
+  jumpBtn.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    if(jumpPointerActive)return;
+    jumpPointerActive=true;
+    if(jumpBtn.setPointerCapture && e.pointerId!==undefined){
+      try{jumpBtn.setPointerCapture(e.pointerId)}catch(_){}
+    }
+    jumpBtn.classList.add('active');
+    jump();
+  },{passive:false});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(t=>
+    jumpBtn.addEventListener(t,e=>{
+      e.preventDefault();
+      jumpPointerActive=false;
+      jumpBtn.classList.remove('active');
+    },{passive:false})
+  );
 
   addEventListener('keydown',e=>{
     if(e.code==='ArrowLeft')keys.left=true;
     if(e.code==='ArrowRight')keys.right=true;
-    if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();jump()}
+    if((e.code==='Space'||e.code==='ArrowUp')&&!e.repeat){e.preventDefault();jump()}
   });
   addEventListener('keyup',e=>{
     if(e.code==='ArrowLeft')keys.left=false;
@@ -422,22 +465,34 @@ canvas{display:block;width:100%;height:100%}
 
     for(const e of enemies){
       if(e.dead)continue;
-      if(e.type==='crab')e.x+=e.dir*.65*s;
-      e.y=groundY()-e.h;
+
+      if(e.type==='crab'){
+        e.x+=e.dir*.65*s;
+        e.y=groundY()-e.h;
+      }else if(e.type==='gull'){
+        e.x+=e.dir*.9*s;
+        e.phase+=.045*s;
+        e.y=groundY()-105+Math.sin(e.phase)*24;
+      }else{
+        e.y=groundY()-e.h;
+      }
+
       const r={x:e.x-worldX+3,y:e.y+3,w:e.w-6,h:e.h-3};
       if(!rectHit(player,r))continue;
 
       const previousBottom=previousY+player.h;
       const currentBottom=player.y+player.h;
-      const stomped=e.type==='crab' && player.vy>0 && previousBottom<=r.y+11 && currentBottom>=r.y;
+      const isDefeatable=e.type!=='rock';
+      const crossedEnemyTop=previousBottom<=r.y+12 && currentBottom>=r.y;
+      const stomped=isDefeatable && player.vy>0 && crossedEnemyTop;
 
       if(stomped){
         e.dead=true;
         player.y=r.y-player.h;
         player.vy=-9.5;
         player.jumps=1;
-        burst(r.x+r.w/2,r.y+8,'#ffb06d');
-        toast.textContent='カニを倒した！';
+        burst(r.x+r.w/2,r.y+8,e.type==='gull'?'#ffffff':'#ffb06d');
+        toast.textContent=e.type==='crab'?'カニを倒した！':'敵を踏みつけた！';
         toast.classList.add('show');
         setTimeout(()=>toast.classList.remove('show'),500);
       }else{
@@ -543,22 +598,42 @@ canvas{display:block;width:100%;height:100%}
     if(e.dead)return;
     const x=e.x-worldX,y=e.y;
     if(x<-80||x>W+80)return;
+
     if(e.type==='rock'){
       ctx.fillStyle='#727984';
-      ctx.beginPath();ctx.moveTo(x,y+e.h);ctx.lineTo(x+6,y+12);ctx.lineTo(x+22,y);ctx.lineTo(x+e.w-4,y+14);ctx.lineTo(x+e.w,y+e.h);ctx.closePath();ctx.fill();
-    }else{
-      ctx.save();ctx.translate(x,y);
-      ctx.fillStyle='#e97b63';ctx.strokeStyle='#d86855';ctx.lineWidth=4;
-      ctx.beginPath();ctx.ellipse(24,20,17,12,0,0,Math.PI*2);ctx.fill();
       ctx.beginPath();
-      ctx.moveTo(10,22);ctx.lineTo(2,31);
-      ctx.moveTo(17,27);ctx.lineTo(11,35);
-      ctx.moveTo(31,27);ctx.lineTo(37,35);
-      ctx.moveTo(38,22);ctx.lineTo(46,31);ctx.stroke();
-      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(18,13,4,0,Math.PI*2);ctx.arc(30,13,4,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='#222';ctx.beginPath();ctx.arc(19,13,1.7,0,Math.PI*2);ctx.arc(29,13,1.7,0,Math.PI*2);ctx.fill();
-      ctx.restore();
+      ctx.moveTo(x,y+e.h);ctx.lineTo(x+6,y+12);ctx.lineTo(x+22,y);
+      ctx.lineTo(x+e.w-4,y+14);ctx.lineTo(x+e.w,y+e.h);
+      ctx.closePath();ctx.fill();
+      return;
     }
+
+    if(e.type==='gull'){
+      ctx.save();
+      ctx.translate(x,y);
+      if(e.dir<0){ctx.translate(e.w,0);ctx.scale(-1,1)}
+      ctx.fillStyle='#fffdf8';
+      ctx.beginPath();ctx.ellipse(27,18,18,10,0,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.moveTo(18,18);ctx.quadraticCurveTo(2,4,5,22);ctx.quadraticCurveTo(12,25,22,20);ctx.fill();
+      ctx.fillStyle='#f4bf43';
+      ctx.beginPath();ctx.moveTo(43,16);ctx.lineTo(53,20);ctx.lineTo(43,23);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#263238';
+      ctx.beginPath();ctx.arc(37,15,2,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    ctx.save();ctx.translate(x,y);
+    ctx.fillStyle='#e97b63';ctx.strokeStyle='#d86855';ctx.lineWidth=4;
+    ctx.beginPath();ctx.ellipse(24,20,17,12,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(10,22);ctx.lineTo(2,31);
+    ctx.moveTo(17,27);ctx.lineTo(11,35);
+    ctx.moveTo(31,27);ctx.lineTo(37,35);
+    ctx.moveTo(38,22);ctx.lineTo(46,31);ctx.stroke();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(18,13,4,0,Math.PI*2);ctx.arc(30,13,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#222';ctx.beginPath();ctx.arc(19,13,1.7,0,Math.PI*2);ctx.arc(29,13,1.7,0,Math.PI*2);ctx.fill();
+    ctx.restore();
   }
 
   function drawFinish(){
