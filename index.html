@@ -191,6 +191,27 @@ canvas{display:block;width:100%;height:100%}
   background:linear-gradient(rgba(42,85,115,.22),rgba(18,54,75,.38));
 }
 #storyOverlay.show{display:flex}
+#stageNotice{
+  position:absolute;
+  z-index:18;
+  left:50%;
+  top:42%;
+  transform:translate(-50%,-50%);
+  width:min(350px,84%);
+  padding:18px 20px;
+  border-radius:20px;
+  background:rgba(28,47,92,.94);
+  color:#fff;
+  text-align:center;
+  font-weight:900;
+  line-height:1.65;
+  box-shadow:0 14px 38px rgba(0,0,0,.28);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s;
+}
+#stageNotice.show{opacity:1}
+#stageNotice small{display:block;margin-top:5px;font-size:13px;font-weight:700;opacity:.88}
 .storyCard{
   width:min(400px,100%);
   background:rgba(255,255,255,.97);
@@ -301,6 +322,7 @@ canvas{display:block;width:100%;height:100%}
         <div class="rule"><span class="ruleIcon">⬆️</span><span>ジャンプボタンを空中でもう一度押すと、二段ジャンプ！</span></div>
         <div class="rule"><span class="ruleIcon">👾</span><span>カニなどの敵は、上から踏みつけるとダメージなしで倒せます。</span></div>
         <div class="rule"><span class="ruleIcon">🪨</span><span>敵の横や岩にぶつかると、ライフが1つ減ります。岩は倒せません。</span></div>
+        <div class="rule"><span class="ruleIcon">🌟</span><span>ステージ4だけ自動横スクロール。左右ボタンで位置を調整できます。</span></div>
       </div>
       <div id="recordBox">
         <div>今回の記録：🐚 <span id="lastScore">0</span></div>
@@ -333,6 +355,9 @@ canvas{display:block;width:100%;height:100%}
   const storyTitle = document.getElementById('storyTitle');
   const storyText = document.getElementById('storyText');
   const storyNextBtn = document.getElementById('storyNextBtn');
+  const autoBadge = document.getElementById('autoBadge');
+  const stageNotice = document.getElementById('stageNotice');
+  const controlButtons = [leftBtn,rightBtn,jumpBtn];
 
   const leftBtn = document.getElementById('leftBtn');
   const rightBtn = document.getElementById('rightBtn');
@@ -365,7 +390,7 @@ canvas{display:block;width:100%;height:100%}
     {name:'砂浜', sky1:'#8edcff',sky2:'#e9fbff',sea:'#48aee0',sand:'#efd49c',finish:1800},
     {name:'夕焼け', sky1:'#ffb782',sky2:'#ffe7c7',sea:'#4b8bc4',sand:'#e9c27f',finish:2100},
     {name:'氷の海', sky1:'#a8d9ff',sky2:'#f7fdff',sea:'#72b5da',sand:'#dcecf2',finish:2350},
-    {name:'星空の浜辺', sky1:'#4059a8',sky2:'#9bc5ff',sea:'#315f93',sand:'#d7c694',finish:2550},
+    {name:'星空の浜辺', sky1:'#4059a8',sky2:'#9bc5ff',sea:'#315f93',sand:'#d7c694',finish:2550,autoScroll:true},
     {name:'虹の海', sky1:'#ffb8d2',sky2:'#c9f4ff',sea:'#57b8ce',sand:'#f1d8a5',finish:2800}
   ];
   const stories=[
@@ -394,8 +419,22 @@ canvas{display:block;width:100%;height:100%}
 
   function groundY(){return H-150}
 
+  function clearControls(){
+    keys.left=false;
+    keys.right=false;
+    player.vx=0;
+    controlButtons.forEach(btn=>btn.classList.remove('active'));
+  }
+
+  function showStageNotice(){
+    if(!stages[stage-1].autoScroll)return;
+    stageNotice.classList.add('show');
+    setTimeout(()=>stageNotice.classList.remove('show'),2200);
+  }
+
   function resetStage(full=false){
     stageClearLocked=false;
+    clearControls();
     if(full){score=0;lives=3;stage=1}
     worldX=0;
     player.x=90;player.y=groundY()-player.h;player.vx=0;player.vy=0;player.jumps=0;player.inv=0;
@@ -427,6 +466,7 @@ canvas{display:block;width:100%;height:100%}
       });
     }
     particles=[];
+    autoBadge.style.display=s.autoScroll?'block':'none';
     updateHud();
   }
 
@@ -453,8 +493,7 @@ canvas{display:block;width:100%;height:100%}
     closeStory();
     if(running)saveScore();
     running=false;
-    keys.left=false;
-    keys.right=false;
+    clearControls();
     overlayTitle.textContent='しろまるの海辺アドベンチャー';
     overlayText.textContent=message;
     startBtn.textContent='ゲームスタート';
@@ -477,6 +516,7 @@ canvas{display:block;width:100%;height:100%}
     running=true;
     overlay.classList.add('hidden');
     last=performance.now();
+    showStageNotice();
     requestAnimationFrame(loop);
   }
 
@@ -515,6 +555,7 @@ canvas{display:block;width:100%;height:100%}
     if(stageClearLocked)return;
     stageClearLocked=true;
     running=false;
+    clearControls();
 
     const clearedStage=stage;
     toast.textContent='ステージクリア！';
@@ -558,6 +599,16 @@ canvas{display:block;width:100%;height:100%}
   bindHold(leftBtn,'left');
   bindHold(rightBtn,'right');
 
+  // 紙芝居や画面外で指を離しても入力が残らないようにする
+  ['pointerup','pointercancel','blur'].forEach(type=>{
+    window.addEventListener(type,()=>{
+      keys.left=false;
+      keys.right=false;
+      leftBtn.classList.remove('active');
+      rightBtn.classList.remove('active');
+    });
+  });
+
   // ジャンプボタンは毎回の pointerdown を1回のジャンプとして処理。
   // 指を離す判定に依存しないため、スマホでも2回目のタップを確実に受付。
   jumpBtn.addEventListener('pointerdown',e=>{
@@ -591,6 +642,7 @@ canvas{display:block;width:100%;height:100%}
       stageClearLocked=false;
       running=true;
       last=performance.now();
+      showStageNotice();
       requestAnimationFrame(loop);
     }else{
       saveScore();
@@ -649,7 +701,12 @@ canvas{display:block;width:100%;height:100%}
     }
     if(player.y>H+120){hurt();player.y=groundY()-player.h;player.vy=0}
 
-    if(player.x>W*.56){
+    const currentStage=stages[stage-1];
+    if(currentStage.autoScroll){
+      // ステージ4限定。背景は自動で進むが、左右操作は有効。
+      worldX+=1.45*s;
+      player.x=Math.max(18,Math.min(W*.78,player.x));
+    }else if(player.x>W*.56){
       const shift=player.x-W*.56;
       player.x-=shift;
       worldX+=shift;
